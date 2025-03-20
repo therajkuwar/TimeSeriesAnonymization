@@ -64,7 +64,7 @@ except Exception as e:
 
 # Navigation Sidebar
 st.sidebar.header("Navigation")
-page = st.sidebar.radio("Select Module", ["Home", "Anonymization", "Privacy & Utility Check", "Temporal Pattern Check"])
+page = st.sidebar.radio("Select Module", ["Anonymization", "Privacy & Utility Check", "Temporal Pattern Check"])
 
 # Home Page
 if page == "Home":
@@ -83,7 +83,7 @@ if page == "Anonymization":
         data = pd.read_csv(orig_file)
     else:
         st.info("No file uploaded. Using sample dataset.")
-        data = load_sample_dataset()
+        data = sample_data
 
     st.write("Dataset Preview:")
     st.write(data.head())
@@ -101,21 +101,40 @@ if page == "Anonymization":
 
     def build_transition_matrix(states, num_states):
         matrix = np.zeros((num_states, num_states))
+
         for i in range(len(states) - 1):
-            matrix[states[i], states[i + 1]] += 1
-        return np.nan_to_num(matrix / matrix.sum(axis=1, keepdims=True))
+            current_state = states[i]
+            next_state = states[i + 1]
+            if current_state < num_states and next_state < num_states:
+                matrix[current_state, next_state] += 1
+
+        matrix = np.nan_to_num(matrix / matrix.sum(axis=1, keepdims=True))  # Normalize
+        return matrix
 
     def add_exponential_noise(matrix, noise_scale):
-        noisy_matrix = np.exp(matrix / noise_scale)
-        return noisy_matrix / noisy_matrix.sum(axis=1, keepdims=True)
+        noisy_matrix = np.exp(matrix / noise_scale)  # Apply exponential transformation
+        noisy_matrix /= noisy_matrix.sum(axis=1, keepdims=True)  # Normalize rows
+        return noisy_matrix
 
     def anonymize_column(values, states, ranges, noisy_matrix):
         anonymized_values = []
-        for i in range(len(values)):
+        
+        for i, current_value in enumerate(values):
             current_state = states[i]
-            sampled_state = np.random.choice(len(noisy_matrix[current_state]), p=noisy_matrix[current_state])
-            range_min, range_max = ranges[sampled_state].left, ranges[sampled_state].right
-            anonymized_values.append(range_min + (range_max - range_min) * np.random.uniform())
+            range_min, range_max = ranges[current_state].left, ranges[current_state].right
+            
+            # Step 1: Use noisy transition probabilities to sample the next state
+            state_probabilities = noisy_matrix[current_state]
+            sampled_state = np.random.choice(np.arange(len(state_probabilities)), p=state_probabilities)
+
+            # Step 2: Generate a value influenced by real trends
+            noise_factor = np.random.normal(loc=0.5, scale=0.2)  # Gaussian noise
+            noise_factor = np.clip(noise_factor, 0, 1)
+            new_value = range_min + (range_max - range_min) * noise_factor
+
+            anonymized_values.append(new_value)
+
+        # Step 3: Apply smoothing to maintain temporal consistency
         return pd.Series(anonymized_values).rolling(window=3, min_periods=1).mean()
 
     # Anonymization process
@@ -158,3 +177,81 @@ elif page == "Privacy & Utility Check":
             st.dataframe(results_df)
             csv = results_df.to_csv(index=False).encode()
             st.download_button("Download Analysis Report", csv, "privacy_utility_analysis.csv", "text/csv")
+
+elif page == "Temporal Pattern Check":
+    st.header("PTemporal Pattern Check")
+    if orig_file and anon_file:
+        orig_data = pd.read_csv(orig_file)
+        anon_data = pd.read_csv(anon_file)        
+
+        st.sidebar.header("Dataset Settings")
+
+        # Select date column
+        date_column = st.sidebar.selectbox("Select Date Column", orig_data.columns)
+
+        # Select numerical columns
+        num_columns = st.sidebar.multiselect(
+            "Select Numerical Columns for Comparison",
+            orig_data.select_dtypes(include=np.number).columns.tolist(),
+        )
+
+        if date_column and num_columns:
+            # Convert date column to datetime
+            orig_data[date_column] = pd.to_datetime(orig_data[date_column])
+            anon_data[date_column] = pd.to_datetime(anon_data[date_column])
+
+            # Sort datasets by date
+            original_data = orig_data.sort_values(by=date_column)
+            anonymized_data = anon_data.sort_values(by=date_column)
+
+            # --- Temporal Pattern Comparison ---
+            st.subheader("Temporal Pattern Comparison")
+            for col in num_columns:
+                fig, ax = plt.subplots(figsize=(10, 5))
+                ax.plot(original_data[date_column], original_data[col], label="Original Data", alpha=0.7)
+                ax.plot(anonymized_data[date_column], anonymized_data[col], label="Anonymized Data", alpha=0.7)
+                ax.set_title(f"Temporal Pattern Comparison for {col}")
+                ax.set_xlabel("Date")
+                ax.set_ylabel(col)
+                ax.legend()
+                ax.grid(True)
+                st.pyplot(fig)
+
+            # --- Aggregated Visualization ---
+            st.subheader("Aggregated Temporal Pattern Comparison")
+
+            def aggregate_data(data, date_column, columns, freq="W"):
+                return data.set_index(date_column).resample(freq)[columns].mean().reset_index()
+
+            freq = st.selectbox("Select Aggregation Frequency", ["Daily", "Weekly", "Monthly"], index=1)
+            freq_map = {"Daily": "D", "Weekly": "W", "Monthly": "M"}
+
+            aggregated_original = aggregate_data(original_data, date_column, num_columns, freq=freq_map[freq])
+            aggregated_anonymized = aggregate_data(anonymized_data, date_column, num_columns, freq=freq_map[freq])
+
+            for col in num_columns:
+                fig, ax = plt.subplots(figsize=(10, 5))
+                ax.plot(aggregated_original[date_column], aggregated_original[col], label="Original (Aggregated)", alpha=0.7)
+                ax.plot(aggregated_anonymized[date_column], aggregated_anonymized[col], label="Anonymized (Aggregated)", alpha=0.7)
+                ax.set_title(f"Aggregated Temporal Pattern for {col} ({freq})")
+                ax.set_xlabel("Date")
+                ax.set_ylabel(col)
+                ax.legend()
+                ax.grid(True)
+                st.pyplot(fig)
+
+            # --- Correlation Analysis ---
+            st.subheader("Correlation Analysis")
+            for col in num_columns:
+                correlation = np.corrcoef(original_data[col], anonymized_data[col])[0, 1]
+                st.write(f"Correlation for {col}: {correlation:.2f}")
+                if correlation > 0.8:
+                    st.success(f"The temporal pattern for {col} is strongly preserved (correlation > 0.8).")
+                elif correlation > 0.5:
+                    st.warning(f"The temporal pattern for {col} is moderately preserved (correlation > 0.5).")
+                else:
+                    st.error(f"The temporal pattern for {col} is weakly preserved (correlation ≤ 0.5).")
+        else:
+            st.warning("Please select a date column and numerical columns for analysis.")
+    else:
+        st.info("Upload both original and anonymized datasets to proceed.")
