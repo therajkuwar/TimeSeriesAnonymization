@@ -41,7 +41,7 @@ st.markdown(
 st.header("📂 Try a Test Dataset")
 
 # Load dataset from file
-sample_file_path = "https://raw.githubusercontent.com/therajkuwarTimeSeriesAnonymization/main/sample_dataset/patient_1_year_readings.csv"  # Update with your actual file name
+sample_file_path = "https://raw.githubusercontent.com/therajkuwar/TimeSeriesAnonymization/main/sample_dataset/patient_1_year_readings.csv"  # Update with your actual file name
 
 try:
     sample_data = pd.read_csv(sample_file_path)
