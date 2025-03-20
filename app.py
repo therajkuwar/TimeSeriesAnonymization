@@ -41,10 +41,10 @@ st.markdown(
 st.header("📂 Try a Test Dataset")
 
 # Load dataset from file
-sample_file_path = "sample_dataset.csv"  # Update with your actual file name
+sample_file_path = "https://raw.githubusercontent.com/therajkuwarTimeSeriesAnonymization/main/sample_dataset/patient_1_year_readings.csv"  # Update with your actual file name
 
 try:
-    sample_data = pd.read_csv("https://raw.githubusercontent.com/therajkuwarTimeSeriesAnonymization/main/sample_dataset/patient_1_year_readings.csv")
+    sample_data = pd.read_csv(sample_file_path)
     csv = sample_data.to_csv(index=False).encode('utf-8')
 
     # Show dataset preview
