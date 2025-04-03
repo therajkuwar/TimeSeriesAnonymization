@@ -91,7 +91,7 @@ if page == "Anonymization":
     # Select numerical columns
     num_columns = st.multiselect("Select Columns to Anonymize", data.select_dtypes(include=np.number).columns)
     num_states = st.slider("Number of States", 2, 10, 4)
-    noise_scale = st.slider("Noise Scale", 0.01, 1.0, 0.1)
+    noise_scale = st.slider("Noise Scale", 0.1, 50.0, 0.1)
 
     # Functions for anonymization
     def discretize_column(values, num_states):
@@ -152,10 +152,32 @@ if page == "Anonymization":
     st.download_button("Download Anonymized Dataset", csv, "anonymized_dataset.csv", "text/csv")
 
 elif page == "Privacy & Utility Check":
+    # Function to compute privacy & utility scores
+    def compute_privacy_utility(rmse, dtw, correlation, entropy_original, entropy_anonymized, 
+                                rmse_min, rmse_max, dtw_min, dtw_max, entropy_diff_max):
+        """Computes Privacy and Utility Scores based on given metrics."""
+        rmse_score = (rmse - rmse_min) / (rmse_max - rmse_min) if rmse_max > rmse_min else 0
+        dtw_score = (dtw - dtw_min) / (dtw_max - dtw_min) if dtw_max > dtw_min else 0
+        correlation_score = 1 - abs(correlation)  # Invert correlation (higher correlation = lower privacy)
+        
+        entropy_diff = entropy_original - entropy_anonymized
+        entropy_score = entropy_diff / entropy_diff_max if entropy_diff_max > 0 else 0
+
+        # Assign weights (can be tuned)
+        alpha, beta, gamma, delta = 0.25, 0.25, 0.25, 0.25  
+
+        privacy_score = 100 * (alpha * rmse_score + beta * dtw_score + gamma * correlation_score + delta * entropy_score)
+        privacy_score = max(0, min(100, privacy_score))  # Ensure between 0 and 100
+        utility_score = 100 - privacy_score  # Utility is the inverse of privacy
+
+        return round(privacy_score, 2), round(utility_score, 2)
+
+    # Streamlit UI
     st.header("Privacy & Utility Analysis")
-    if orig_file and anon_file:
+    if 'orig_file' in locals() and 'anon_file' in locals():
         orig_data = pd.read_csv(orig_file)
         anon_data = pd.read_csv(anon_file)
+
         common_columns = list(set(orig_data.columns) & set(anon_data.columns))
         num_columns = st.multiselect("Select Columns for Analysis", common_columns, default=common_columns)
 
@@ -171,10 +193,23 @@ elif page == "Privacy & Utility Check":
                 dtw_dist, _ = fastdtw([(x, 0) for x in orig_values], [(x, 0) for x in anon_values], dist=euclidean)
                 entropy_orig, entropy_anon = entropy(np.histogram(orig_values, bins=10)[0]), entropy(np.histogram(anon_values, bins=10)[0])
 
-                results.append((col, correlation, rmse, dtw_dist, entropy_orig, entropy_anon, abs(entropy_orig - entropy_anon)))
+                # Compute Privacy & Utility Scores
+                privacy, utility = compute_privacy_utility(
+                    rmse, dtw_dist, correlation, entropy_orig, entropy_anon,
+                    rmse_min=5, rmse_max=15, dtw_min=2000, dtw_max=3000, entropy_diff_max=0.5
+                )
 
-            results_df = pd.DataFrame(results, columns=["Column", "Correlation", "RMSE", "DTW Distance", "Entropy (Original)", "Entropy (Anonymized)", "Entropy Diff"])
+                results.append((col, correlation, rmse, dtw_dist, entropy_orig, entropy_anon, abs(entropy_orig - entropy_anon), privacy, utility))
+
+            # Convert results to DataFrame
+            results_df = pd.DataFrame(results, columns=["Column", "Correlation", "RMSE", "DTW Distance", 
+                                                        "Entropy (Original)", "Entropy (Anonymized)", "Entropy Diff", 
+                                                        "Privacy Score (%)", "Utility Score (%)"])
+            
+            # Display results
             st.dataframe(results_df)
+            
+            # Download option
             csv = results_df.to_csv(index=False).encode()
             st.download_button("Download Analysis Report", csv, "privacy_utility_analysis.csv", "text/csv")
 
