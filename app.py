@@ -179,7 +179,7 @@ elif page == "Privacy & Utility Check":
         anon_data = pd.read_csv(anon_file)
 
         common_columns = list(set(orig_data.columns) & set(anon_data.columns))
-        num_columns = st.multiselect("Select Columns for Analysis", common_columns, default=common_columns)
+        num_columns = st.multiselect("Select Columns for Analysis", common_columns)
 
         if num_columns:
             results = []
@@ -214,7 +214,7 @@ elif page == "Privacy & Utility Check":
             st.download_button("Download Analysis Report", csv, "privacy_utility_analysis.csv", "text/csv")
 
 elif page == "Temporal Pattern Check":
-    st.header("PTemporal Pattern Check")
+    st.header("Temporal Pattern Check")
     if orig_file and anon_file:
         orig_data = pd.read_csv(orig_file)
         anon_data = pd.read_csv(anon_file)        
