@@ -6,6 +6,9 @@ from scipy.spatial.distance import euclidean
 from scipy.stats import entropy
 from sklearn.metrics import mean_squared_error
 from fastdtw import fastdtw
+from sklearn.model_selection import train_test_split
+from sklearn.ensemble import RandomForestClassifier
+from sklearn.metrics import accuracy_score
 
 
 # Title
@@ -64,7 +67,7 @@ except Exception as e:
 
 # Navigation Sidebar
 st.sidebar.header("Navigation")
-page = st.sidebar.radio("Select Module", ["Anonymization", "Privacy & Utility Check", "Temporal Pattern Check"])
+page = st.sidebar.radio("Select Module", ["Anonymization", "Privacy & Utility Check", "Temporal Pattern Check", "Classification Accuracy Comparison"])
 
 # Home Page
 if page == "Home":
@@ -91,7 +94,7 @@ if page == "Anonymization":
     # Select numerical columns
     num_columns = st.multiselect("Select Columns to Anonymize", data.select_dtypes(include=np.number).columns)
     num_states = st.slider("Number of States", 2, 10, 4)
-    noise_scale = st.slider("Noise Scale", 0.1, 50.0, 0.1)
+    noise_scale = st.slider("Noise Scale", 50, 300, 50)
 
     # Functions for anonymization
     def discretize_column(values, num_states):
@@ -164,11 +167,20 @@ elif page == "Privacy & Utility Check":
         entropy_score = entropy_diff / entropy_diff_max if entropy_diff_max > 0 else 0
 
         # Assign weights (can be tuned)
-        alpha, beta, gamma, delta = 0.25, 0.25, 0.25, 0.25  
+        # alpha, beta, gamma, delta = 0.25, 0.25, 0.25, 0.25  
 
-        privacy_score = 100 * (alpha * rmse_score + beta * dtw_score + gamma * correlation_score + delta * entropy_score)
-        privacy_score = max(0, min(100, privacy_score))  # Ensure between 0 and 100
-        utility_score = 100 - privacy_score  # Utility is the inverse of privacy
+        # privacy_score = 100 * (alpha * rmse_score + beta * dtw_score + gamma * correlation_score + delta * entropy_score)
+        # privacy_score = max(0, min(100, privacy_score))
+
+        
+        # utility_score = 100 * (alpha * (1 - rmse_score) + beta * (1 - dtw_score) + gamma * abs(correlation) + delta * (1 - abs(entropy_score)))
+        # utility_score = max(0, min(100, utility_score))
+
+        # Utility score should depend on correlation more
+        # utility_score = 100 * (abs(correlation))
+        # utility_score = max(0, min(100, utility_score))
+
+
 
         return round(privacy_score, 2), round(utility_score, 2)
 
@@ -194,17 +206,16 @@ elif page == "Privacy & Utility Check":
                 entropy_orig, entropy_anon = entropy(np.histogram(orig_values, bins=10)[0]), entropy(np.histogram(anon_values, bins=10)[0])
 
                 # Compute Privacy & Utility Scores
-                privacy, utility = compute_privacy_utility(
-                    rmse, dtw_dist, correlation, entropy_orig, entropy_anon,
-                    rmse_min=5, rmse_max=15, dtw_min=2000, dtw_max=3000, entropy_diff_max=0.5
-                )
+                # privacy, utility = compute_privacy_utility(
+                #     rmse, dtw_dist, correlation, entropy_orig, entropy_anon,
+                #     rmse_min=5, rmse_max=15, dtw_min=2000, dtw_max=3000, entropy_diff_max=0.5
+                # )
 
-                results.append((col, correlation, rmse, dtw_dist, entropy_orig, entropy_anon, abs(entropy_orig - entropy_anon), privacy, utility))
+                results.append((col, correlation, rmse, dtw_dist, entropy_orig, entropy_anon, abs(entropy_orig - entropy_anon)))
 
             # Convert results to DataFrame
             results_df = pd.DataFrame(results, columns=["Column", "Correlation", "RMSE", "DTW Distance", 
-                                                        "Entropy (Original)", "Entropy (Anonymized)", "Entropy Diff", 
-                                                        "Privacy Score (%)", "Utility Score (%)"])
+                                                        "Entropy (Original)", "Entropy (Anonymized)", "Entropy Diff"])
             
             # Display results
             st.dataframe(results_df)
@@ -212,6 +223,74 @@ elif page == "Privacy & Utility Check":
             # Download option
             csv = results_df.to_csv(index=False).encode()
             st.download_button("Download Analysis Report", csv, "privacy_utility_analysis.csv", "text/csv")
+
+elif page == "Classification Accuracy Comparison" :
+    # Classification Accuracy Comparison Section
+    st.header("📊 Classification Accuracy Comparison (Original vs Anonymized Data)")
+
+    st.markdown("Upload both Original & Anonymized Datasets to compare classification accuracy.")
+
+    # original_file = st.file_uploader("Upload Original Dataset", type="csv", key="orig")
+    # anonymized_file = st.file_uploader("Upload Anonymized Dataset", type="csv", key="anon")
+
+    def is_continuous(series):
+        return pd.api.types.is_numeric_dtype(series) and series.nunique() > 10
+
+    def discretize_target(y, bins=3):
+        return pd.qcut(y, q=bins, labels=False, duplicates='drop')
+
+    def prepare_data(df, target_col, bins=3):
+        X = df.drop(columns=[target_col])
+        y = df[target_col]
+
+        # Drop non-numeric features
+        X = X.select_dtypes(include='number')
+
+        if is_continuous(y):
+            y = discretize_target(y, bins=bins)
+
+        return X, y
+
+    if orig_file and anon_file:
+        df_orig = pd.read_csv(orig_file)
+        df_anon = pd.read_csv(anon_file)
+
+        if not df_orig.columns.equals(df_anon.columns):
+            st.error("❌ Column mismatch between original and anonymized datasets.")
+        else:
+            st.success("✅ Columns match!")
+
+            target_col = st.selectbox("🎯 Select Target Column", df_orig.columns)
+
+            X_o, y_o = prepare_data(df_orig, target_col)
+            X_a, y_a = prepare_data(df_anon, target_col)
+
+            if st.button("Run Classification & Compare Accuracy"):
+                Xo_train, Xo_test, yo_train, yo_test = train_test_split(X_o, y_o, test_size=0.3, random_state=42, stratify=y_o)
+                Xa_train, Xa_test, ya_train, ya_test = train_test_split(X_a, y_a, test_size=0.3, random_state=42, stratify=y_a)
+
+                model = RandomForestClassifier(random_state=42)
+
+                model.fit(Xo_train, yo_train)
+                pred_o = model.predict(Xo_test)
+                acc_o = accuracy_score(yo_test, pred_o)
+
+                model.fit(Xa_train, ya_train)
+                pred_a = model.predict(Xa_test)
+                acc_a = accuracy_score(ya_test, pred_a)
+
+                st.subheader("🔍 Classification Accuracy Results")
+                st.write(f"Original Data Accuracy: **{acc_o * 100:.2f}%**")
+                st.write(f"Anonymized Data Accuracy: **{acc_a * 100:.2f}%**")
+                # Calculate Accuracy Drop
+                accuracy_drop = acc_o - acc_a
+                if accuracy_drop <= 5:
+                    st.success("Excellent Utility Preservation! Data utility is almost intact with minimal privacy gain.")
+                elif 5 < accuracy_drop <= 15:
+                    st.info("Good Balance between Privacy & Utility. Moderate privacy achieved with acceptable utility loss.")
+                else:
+                    st.warning("High Privacy Achieved, but noticeable Utility Loss. Consider tuning anonymization parameters if utility is critical.")
+
 
 elif page == "Temporal Pattern Check":
     st.header("Temporal Pattern Check")
