@@ -55,7 +55,7 @@ try:
 
     # Download button
     st.download_button(
-        label="🔹 Download Sample Dataset",
+        label="Download Sample Dataset",
         data=csv,
         file_name="sample_dataset.csv",
         mime="text/csv"
@@ -226,7 +226,7 @@ elif page == "Privacy & Utility Check":
 
 elif page == "Classification Accuracy Comparison" :
     # Classification Accuracy Comparison Section
-    st.header("📊 Classification Accuracy Comparison (Original vs Anonymized Data)")
+    st.header("Classification Accuracy Comparison (Original vs Anonymized Data)")
 
     st.markdown("Upload both Original & Anonymized Datasets to compare classification accuracy.")
 
@@ -260,7 +260,7 @@ elif page == "Classification Accuracy Comparison" :
         else:
             st.success("✅ Columns match!")
 
-            target_col = st.selectbox("🎯 Select Target Column", df_orig.columns)
+            target_col = st.selectbox("Select Target Column", df_orig.columns)
 
             X_o, y_o = prepare_data(df_orig, target_col)
             X_a, y_a = prepare_data(df_anon, target_col)
@@ -279,7 +279,7 @@ elif page == "Classification Accuracy Comparison" :
                 pred_a = model.predict(Xa_test)
                 acc_a = accuracy_score(ya_test, pred_a)
 
-                st.subheader("🔍 Classification Accuracy Results")
+                st.subheader("Classification Accuracy Results")
                 st.write(f"Original Data Accuracy: **{acc_o * 100:.2f}%**")
                 st.write(f"Anonymized Data Accuracy: **{acc_a * 100:.2f}%**")
                 # Calculate Accuracy Drop
